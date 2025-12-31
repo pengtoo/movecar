@@ -1,5 +1,5 @@
 // functions/[[path]].js
-// 目标：Pages Functions 运行，1:1 还原原始 Worker 的样式和逻辑，并限制只允许 CN 访问。
+// 目标：Pages Functions 运行，1:1 还原原始 Worker 的所有样式和逻辑，包含地域限制。
 
 const CONFIG = { KV_TTL: 3600 }
 
@@ -132,7 +132,7 @@ async function handleOwnerConfirmAction(request, MOVE_CAR_STATUS) {
     }
 }
 
-// 渲染主页 (1:1 还原样式)
+// 渲染主页 (1:1 还原样式，包含图标和页脚修改)
 function renderMainPage(origin, PHONE_NUMBER) {
     const phone = typeof PHONE_NUMBER !== 'undefined' ? PHONE_NUMBER : '';
 
@@ -143,6 +143,7 @@ function renderMainPage(origin, PHONE_NUMBER) {
         <meta charset="UTF-8">
         <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=0">
         <title>挪车找人</title>
+        <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/5.15.4/css/all.min.css">
         <style>
             body { 
                 font-family: 'PingFang SC', 'Helvetica Neue', Helvetica, Arial, sans-serif; 
@@ -277,38 +278,41 @@ function renderMainPage(origin, PHONE_NUMBER) {
                 font-size: 12px;
                 color: #999;
             }
+            .btn-icon { /* 用于图标和文字对齐 */
+                margin-right: 5px;
+            }
         </style>
     </head>
     <body>
         <div class="header">
-            <h1>🅿️ 挪车找人</h1>
+            <h1><i class="fas fa-parking"></i> 挪车找人</h1>
             <p>快速通知车主，请耐心等待</p>
         </div>
         <div class="container">
             <div class="message-box">
-                请在此处留言说明情况（例如：我在等您，请尽快）
+                <i class="fas fa-comment-dots"></i> 请在此处留言说明情况（例如：我在等您，请尽快）
             </div>
             <textarea id="message" placeholder="输入留言（选填）"></textarea>
 
             <div class="location-status">
-                <span id="location-status">📍 尝试获取位置信息...</span>
+                <span id="location-status"><i class="fas fa-map-marker-alt"></i> 尝试获取位置信息...</span>
                 <div class="loading" id="loading"></div>
             </div>
             
             <div class="delay-checkbox">
                 <input type="checkbox" id="delay-send">
-                <label for="delay-send">若车主 30 秒内未响应，是否再次发送通知?</label>
+                <label for="delay-send"><i class="far fa-bell"></i> 若车主 30 秒内未响应，是否再次发送通知?</label>
             </div>
 
-            <button class="notify-btn" id="notify-button" disabled>发送挪车通知</button>
+            <button class="notify-btn" id="notify-button" disabled><i class="fas fa-bullhorn btn-icon"></i> 发送挪车通知</button>
             
             <a href="tel:${phone}" style="text-decoration: none;">
-                <button class="call-btn">直接打电话给车主（${phone}）</button>
+                <button class="call-btn"><i class="fas fa-phone-alt btn-icon"></i> 直接打电话给车主（${phone}）</button>
             </a>
             
         </div>
         <div class="footer">
-            Powered by Cloudflare Worker
+            Powered by 鄂A6F47M
         </div>
 
         <script>
@@ -323,12 +327,14 @@ function renderMainPage(origin, PHONE_NUMBER) {
 
             function updateUI(canNotify) {
                 notifyButton.disabled = !canNotify;
-                notifyButton.textContent = canNotify ? '发送挪车通知' : '位置信息获取中...';
+                notifyButton.innerHTML = canNotify 
+                    ? '<i class="fas fa-bullhorn btn-icon"></i> 发送挪车通知' 
+                    : '<i class="fas fa-circle-notch fa-spin btn-icon"></i> 位置信息获取中...';
             }
 
             function getLocation() {
                 loading.style.display = 'block';
-                locationStatusText.textContent = '尝试获取位置信息...';
+                locationStatusText.innerHTML = '<i class="fas fa-map-marker-alt"></i> 尝试获取位置信息...';
                 updateUI(false);
 
                 if (navigator.geolocation) {
@@ -360,7 +366,7 @@ function renderMainPage(origin, PHONE_NUMBER) {
 
             notifyButton.addEventListener('click', async () => {
                 notifyButton.disabled = true;
-                notifyButton.textContent = '发送中...';
+                notifyButton.innerHTML = '<i class="fas fa-paper-plane btn-icon"></i> 发送中...';
 
                 const payload = {
                     message: messageInput.value || '车旁有人等待，请尽快挪车',
@@ -384,8 +390,7 @@ function renderMainPage(origin, PHONE_NUMBER) {
                 } catch (error) {
                     alert(\`❌ 通知发送失败，请检查网络或配置: \${error.message}\`);
                 } finally {
-                    notifyButton.textContent = '发送挪车通知';
-                    notifyButton.disabled = false;
+                    updateUI(true); 
                 }
             });
 
@@ -397,16 +402,16 @@ function renderMainPage(origin, PHONE_NUMBER) {
     return new Response(html, { headers: { 'Content-Type': 'text/html;charset=UTF-8' } });
 }
 
-// 渲染车主确认页 (1:1 还原样式)
+// 渲染车主确认页 (1:1 还原样式，包含图标)
 async function renderOwnerPage(MOVE_CAR_STATUS) {
     const requesterLocationData = await MOVE_CAR_STATUS.get('requester_location');
     const requesterLocation = requesterLocationData ? JSON.parse(requesterLocationData) : null;
 
     const mapHtml = requesterLocation 
         ? `<div class="map-link-group">
-             <p>请求人位置：</p>
-             <a href="${requesterLocation.amapUrl}" target="_blank" class="map-btn amap-btn">高德地图导航</a>
-             <a href="${requesterLocation.appleUrl}" target="_blank" class="map-btn apple-btn">苹果地图导航</a>
+             <p><i class="fas fa-map-marked-alt"></i> 请求人位置：</p>
+             <a href="${requesterLocation.amapUrl}" target="_blank" class="map-btn amap-btn"><i class="fas fa-map-pin"></i> 高德地图导航</a>
+             <a href="${requesterLocation.appleUrl}" target="_blank" class="map-btn apple-btn"><i class="fas fa-map-pin"></i> 苹果地图导航</a>
            </div>`
         : '<p class="info-text">⚠️ 请求人未提供位置信息。</p>';
 
@@ -417,6 +422,7 @@ async function renderOwnerPage(MOVE_CAR_STATUS) {
         <meta charset="UTF-8">
         <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=0">
         <title>挪车确认</title>
+        <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/5.15.4/css/all.min.css">
         <style>
             body { 
                 font-family: 'PingFang SC', 'Helvetica Neue', Helvetica, Arial, sans-serif; 
@@ -532,11 +538,14 @@ async function renderOwnerPage(MOVE_CAR_STATUS) {
                 0% { transform: rotate(0deg); } 
                 100% { transform: rotate(360deg); } 
             }
+            .btn-icon { /* 用于图标和文字对齐 */
+                margin-right: 5px;
+            }
         </style>
     </head>
     <body>
         <div class="header">
-            <h1>🚨 紧急挪车请求</h1>
+            <h1><i class="fas fa-exclamation-triangle"></i> 紧急挪车请求</h1>
             <p>请您尽快处理，避免不必要的麻烦</p>
         </div>
         <div class="container">
@@ -545,9 +554,12 @@ async function renderOwnerPage(MOVE_CAR_STATUS) {
 
             ${mapHtml}
 
-            <button class="confirm-btn" id="confirm-button">我已确认，正去挪车/回复</button>
+            <button class="confirm-btn" id="confirm-button"><i class="fas fa-check-circle btn-icon"></i> 我已确认，正去挪车/回复</button>
             <div class="loading" id="loading"></div>
             
+        </div>
+        <div class="footer">
+            Powered by 鄂A6F47M
         </div>
 
         <script>
@@ -560,7 +572,7 @@ async function renderOwnerPage(MOVE_CAR_STATUS) {
             function confirmAction() {
                 loading.style.display = 'block';
                 confirmButton.disabled = true;
-                confirmButton.textContent = '正在提交确认...';
+                confirmButton.innerHTML = '<i class="fas fa-spinner fa-spin btn-icon"></i> 正在提交确认...';
 
                 // 尝试获取车主位置
                 if (navigator.geolocation) {
@@ -593,18 +605,18 @@ async function renderOwnerPage(MOVE_CAR_STATUS) {
 
                     if (response.ok) {
                         document.querySelector('.container').innerHTML = 
-                            '<h1 style="color:#28a745; font-size: 28px;">✅ 挪车请求已确认</h1>' +
+                            '<h1 style="color:#28a745; font-size: 28px;"><i class="fas fa-check-circle"></i> 挪车请求已确认</h1>' +
                             '<p style="color:#28a745; font-weight: 500; font-size: 16px; margin-top: 15px;">您已成功确认。请求人将收到通知，请尽快前往！</p>' +
                             '<p style="font-size: 14px; color:#999; margin-top: 30px;">（此页面已失效，无需重复操作）</p>';
                     } else {
                         alert('❌ 确认失败，请重试。');
                         confirmButton.disabled = false;
-                        confirmButton.textContent = '我已确认，正去挪车/回复';
+                        confirmButton.innerHTML = '<i class="fas fa-check-circle btn-icon"></i> 我已确认，正去挪车/回复';
                     }
                 } catch (error) {
                     alert(\`❌ 确认提交失败: \${error.message}\`);
                     confirmButton.disabled = false;
-                    confirmButton.textContent = '我已确认，正去挪车/回复';
+                    confirmButton.innerHTML = '<i class="fas fa-check-circle btn-icon"></i> 我已确认，正去挪车/回复';
                 } finally {
                     loading.style.display = 'none';
                 }
