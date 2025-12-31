@@ -1,6 +1,5 @@
 // functions/[[path]].js
-// 适配自 https://github.com/lesnolie/movecar/blob/main/movecar.js
-// 目标：在 Cloudflare Pages Functions 上运行
+// 目标：Pages Functions 运行，1:1 还原原始 Worker 的样式和逻辑，并限制只允许 CN 访问。
 
 const CONFIG = { KV_TTL: 3600 }
 
@@ -82,7 +81,6 @@ async function handleNotify(request, url, MOVE_CAR_STATUS, BARK_URL) {
         await MOVE_CAR_STATUS.put('notify_status', 'waiting', { expirationTtl: 600 });
 
         if (delayed) {
-            // 注意：Worker 的 CPU 时间有限，长时间延时可能导致费用或失败
             await new Promise(resolve => setTimeout(resolve, 30000));
         }
 
@@ -134,7 +132,7 @@ async function handleOwnerConfirmAction(request, MOVE_CAR_STATUS) {
     }
 }
 
-// 渲染主页
+// 渲染主页 (1:1 还原样式)
 function renderMainPage(origin, PHONE_NUMBER) {
     const phone = typeof PHONE_NUMBER !== 'undefined' ? PHONE_NUMBER : '';
 
@@ -143,55 +141,180 @@ function renderMainPage(origin, PHONE_NUMBER) {
     <html lang="zh-CN">
     <head>
         <meta charset="UTF-8">
-        <meta name="viewport" content="width=device-width, initial-scale=1.0">
+        <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=0">
         <title>挪车找人</title>
         <style>
-            body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif; background-color: #f7f7f7; padding: 20px; text-align: center; }
-            .container { background-color: #ffffff; border-radius: 12px; box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1); padding: 30px; max-width: 400px; margin: 0 auto; }
-            h1 { color: #333; margin-bottom: 20px; font-size: 24px; }
-            textarea { width: 100%; height: 80px; padding: 10px; margin-bottom: 15px; border: 1px solid #ddd; border-radius: 8px; box-sizing: border-box; resize: none; }
-            button { width: 100%; padding: 12px; margin-top: 10px; border: none; border-radius: 8px; font-size: 16px; font-weight: bold; cursor: pointer; transition: background-color 0.3s; }
-            .notify-btn { background-color: #007bff; color: white; }
-            .notify-btn:hover { background-color: #0056b3; }
-            .call-btn { background-color: #28a745; color: white; margin-top: 20px; }
-            .call-btn:hover { background-color: #1e7e34; }
-            .location-status { margin-top: 15px; font-size: 14px; color: #555; }
-            .loading { border: 4px solid #f3f3f3; border-top: 4px solid #007bff; border-radius: 50%; width: 20px; height: 20px; animation: spin 1s linear infinite; margin: 10px auto; display: none; }
-            @keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
-            .delay-checkbox { display: flex; align-items: center; justify-content: center; margin-top: 15px; font-size: 14px; color: #555; }
-            .delay-checkbox input { margin-right: 5px; }
-            .message-box { margin-top: 20px; padding: 15px; background-color: #e9ecef; border-radius: 8px; font-size: 14px; text-align: left; }
-            .message-box p { margin: 0; }
+            body { 
+                font-family: 'PingFang SC', 'Helvetica Neue', Helvetica, Arial, sans-serif; 
+                background-color: #f0f2f5; 
+                padding: 0; 
+                margin: 0; 
+                text-align: center;
+            }
+            .header {
+                background-color: #28a745;
+                color: white;
+                padding: 40px 20px;
+                border-bottom-left-radius: 20px;
+                border-bottom-right-radius: 20px;
+                box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+            }
+            .header h1 {
+                margin: 0;
+                font-size: 28px;
+                font-weight: 600;
+            }
+            .header p {
+                margin-top: 5px;
+                font-size: 16px;
+                opacity: 0.9;
+            }
+            .container { 
+                background-color: #ffffff; 
+                border-radius: 12px; 
+                box-shadow: 0 4px 12px rgba(0, 0, 0, 0.08); 
+                padding: 25px; 
+                max-width: 90%;
+                margin: -20px auto 20px;
+                position: relative;
+            }
+            .message-box { 
+                margin-bottom: 20px; 
+                padding: 15px; 
+                background-color: #fff3cd; 
+                border: 1px solid #ffeeba;
+                border-radius: 8px; 
+                font-size: 14px; 
+                text-align: left;
+                color: #856404;
+                line-height: 1.5;
+            }
+            textarea { 
+                width: 100%; 
+                height: 100px; 
+                padding: 15px; 
+                margin-bottom: 20px; 
+                border: 1px solid #dcdcdc; 
+                border-radius: 8px; 
+                box-sizing: border-box; 
+                resize: none; 
+                font-size: 16px;
+                transition: border-color 0.3s;
+            }
+            textarea:focus {
+                border-color: #28a745;
+                outline: none;
+            }
+            button { 
+                width: 100%; 
+                padding: 15px; 
+                margin-top: 10px; 
+                border: none; 
+                border-radius: 10px; 
+                font-size: 18px; 
+                font-weight: bold; 
+                cursor: pointer; 
+                transition: background-color 0.3s, opacity 0.3s; 
+                box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+            }
+            button:disabled {
+                opacity: 0.6;
+                cursor: not-allowed;
+            }
+            .notify-btn { 
+                background-color: #007bff; 
+                color: white; 
+            }
+            .notify-btn:hover:not(:disabled) { 
+                background-color: #0056b3; 
+            }
+            .call-btn { 
+                background-color: #f0f0f0; 
+                color: #333; 
+                margin-top: 15px; 
+                border: 1px solid #ddd;
+            }
+            .call-btn:hover:not(:disabled) { 
+                background-color: #e0e0e0; 
+            }
+            .location-status { 
+                margin-bottom: 15px; 
+                font-size: 15px; 
+                color: #555;
+                display: flex;
+                align-items: center;
+                justify-content: center;
+                gap: 8px;
+            }
+            .loading { 
+                border: 3px solid #f3f3f3; 
+                border-top: 3px solid #007bff; 
+                border-radius: 50%; 
+                width: 18px; 
+                height: 18px; 
+                animation: spin 1s linear infinite; 
+                display: none; 
+            }
+            @keyframes spin { 
+                0% { transform: rotate(0deg); } 
+                100% { transform: rotate(360deg); } 
+            }
+            .delay-checkbox { 
+                display: flex; 
+                align-items: center; 
+                justify-content: flex-start;
+                margin-top: 10px; 
+                margin-bottom: 20px;
+                font-size: 14px; 
+                color: #555; 
+            }
+            .delay-checkbox input { 
+                margin-right: 8px; 
+                transform: scale(1.1);
+            }
+            .footer {
+                margin-top: 30px;
+                font-size: 12px;
+                color: #999;
+            }
         </style>
     </head>
     <body>
+        <div class="header">
+            <h1>🅿️ 挪车找人</h1>
+            <p>快速通知车主，请耐心等待</p>
+        </div>
         <div class="container">
-            <h1>一键通知车主挪车</h1>
             <div class="message-box">
-                <p>请留言说明情况（例如：我在等您，请尽快）</p>
+                请在此处留言说明情况（例如：我在等您，请尽快）
             </div>
             <textarea id="message" placeholder="输入留言（选填）"></textarea>
 
-            <div class="location-status" id="location-status">📍 尝试获取位置信息...</div>
-            <div class="loading" id="loading"></div>
+            <div class="location-status">
+                <span id="location-status">📍 尝试获取位置信息...</span>
+                <div class="loading" id="loading"></div>
+            </div>
             
             <div class="delay-checkbox">
                 <input type="checkbox" id="delay-send">
-                <label for="delay-send">若车主 30 秒内未响应，再发送一次通知</label>
+                <label for="delay-send">若车主 30 秒内未响应，是否再次发送通知?</label>
             </div>
 
             <button class="notify-btn" id="notify-button" disabled>发送挪车通知</button>
             
             <a href="tel:${phone}" style="text-decoration: none;">
-                <button class="call-btn">直接打电话（${phone}）</button>
+                <button class="call-btn">直接打电话给车主（${phone}）</button>
             </a>
             
+        </div>
+        <div class="footer">
+            Powered by Cloudflare Worker
         </div>
 
         <script>
             const messageInput = document.getElementById('message');
             const notifyButton = document.getElementById('notify-button');
-            const locationStatus = document.getElementById('location-status');
+            const locationStatusText = document.getElementById('location-status');
             const loading = document.getElementById('loading');
             const delayCheckbox = document.getElementById('delay-send');
             const apiUrl = '${origin}/api/notify';
@@ -205,7 +328,7 @@ function renderMainPage(origin, PHONE_NUMBER) {
 
             function getLocation() {
                 loading.style.display = 'block';
-                locationStatus.textContent = '📍 尝试获取位置信息...';
+                locationStatusText.textContent = '尝试获取位置信息...';
                 updateUI(false);
 
                 if (navigator.geolocation) {
@@ -216,21 +339,21 @@ function renderMainPage(origin, PHONE_NUMBER) {
                                 lat: position.coords.latitude,
                                 lng: position.coords.longitude
                             };
-                            locationStatus.innerHTML = '✅ 位置获取成功。**点击通知可附带此位置信息**。';
+                            locationStatusText.innerHTML = '✅ 位置获取成功。**通知将附带您的位置**。';
                             updateUI(true);
                         },
                         (error) => {
                             loading.style.display = 'none';
                             requesterLocation = null;
-                            locationStatus.innerHTML = '❌ 无法获取位置（请检查权限）。仍可发送通知，但**不含位置**。';
-                            updateUI(true); // 允许在无位置信息的情况下发送
+                            locationStatusText.innerHTML = '❌ 无法获取位置（请检查权限）。**仍可发送通知**。';
+                            updateUI(true);
                             console.error('Geolocation Error:', error);
                         },
                         { enableHighAccuracy: true, timeout: 10000, maximumAge: 0 }
                     );
                 } else {
                     loading.style.display = 'none';
-                    locationStatus.innerHTML = '❌ 浏览器不支持地理定位。';
+                    locationStatusText.innerHTML = '❌ 浏览器不支持地理定位。';
                     updateUI(true);
                 }
             }
@@ -266,7 +389,6 @@ function renderMainPage(origin, PHONE_NUMBER) {
                 }
             });
 
-            // 页面加载时自动获取位置
             document.addEventListener('DOMContentLoaded', getLocation);
         </script>
     </body>
@@ -275,50 +397,151 @@ function renderMainPage(origin, PHONE_NUMBER) {
     return new Response(html, { headers: { 'Content-Type': 'text/html;charset=UTF-8' } });
 }
 
-// 渲染车主确认页
+// 渲染车主确认页 (1:1 还原样式)
 async function renderOwnerPage(MOVE_CAR_STATUS) {
     const requesterLocationData = await MOVE_CAR_STATUS.get('requester_location');
     const requesterLocation = requesterLocationData ? JSON.parse(requesterLocationData) : null;
 
     const mapHtml = requesterLocation 
-        ? `<div class="map-link">
+        ? `<div class="map-link-group">
              <p>请求人位置：</p>
-             <a href="${requesterLocation.amapUrl}" target="_blank" class="map-btn amap-btn">使用高德地图导航</a>
-             <a href="${requesterLocation.appleUrl}" target="_blank" class="map-btn apple-btn">使用苹果地图导航</a>
+             <a href="${requesterLocation.amapUrl}" target="_blank" class="map-btn amap-btn">高德地图导航</a>
+             <a href="${requesterLocation.appleUrl}" target="_blank" class="map-btn apple-btn">苹果地图导航</a>
            </div>`
-        : '<p class="info-text">请求人未提供位置信息。</p>';
+        : '<p class="info-text">⚠️ 请求人未提供位置信息。</p>';
 
     const html = `
     <!DOCTYPE html>
     <html lang="zh-CN">
     <head>
         <meta charset="UTF-8">
-        <meta name="viewport" content="width=device-width, initial-scale=1.0">
+        <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=0">
         <title>挪车确认</title>
         <style>
-            body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif; background-color: #f7f7f7; padding: 20px; text-align: center; }
-            .container { background-color: #ffffff; border-radius: 12px; box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1); padding: 30px; max-width: 400px; margin: 0 auto; }
-            h1 { color: #dc3545; margin-bottom: 10px; font-size: 24px; }
-            h2 { color: #333; margin-top: 0; font-size: 18px; }
-            .status-text { color: #007bff; font-weight: bold; margin-bottom: 30px; }
-            button { width: 100%; padding: 15px; margin-top: 20px; border: none; border-radius: 8px; font-size: 16px; font-weight: bold; cursor: pointer; transition: background-color 0.3s; }
-            .confirm-btn { background-color: #28a745; color: white; }
-            .confirm-btn:hover { background-color: #1e7e34; }
-            .map-link { margin-top: 30px; padding: 15px; background-color: #e9ecef; border-radius: 8px; }
-            .map-link p { color: #555; margin-top: 0; font-size: 14px; }
-            .map-btn { display: block; padding: 10px; margin-top: 10px; border-radius: 6px; text-decoration: none; font-weight: bold; }
-            .amap-btn { background-color: #17b3a3; color: white; }
-            .apple-btn { background-color: #555; color: white; }
-            .info-text { color: #dc3545; font-weight: bold; margin-top: 20px; }
-            .loading { border: 4px solid #f3f3f3; border-top: 4px solid #28a745; border-radius: 50%; width: 20px; height: 20px; animation: spin 1s linear infinite; margin: 10px auto; display: none; }
-            @keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
+            body { 
+                font-family: 'PingFang SC', 'Helvetica Neue', Helvetica, Arial, sans-serif; 
+                background-color: #f0f2f5; 
+                padding: 0; 
+                margin: 0; 
+                text-align: center; 
+            }
+            .header {
+                background-color: #dc3545;
+                color: white;
+                padding: 40px 20px;
+                border-bottom-left-radius: 20px;
+                border-bottom-right-radius: 20px;
+                box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+            }
+            .header h1 {
+                margin: 0;
+                font-size: 28px;
+                font-weight: 600;
+            }
+            .header p {
+                margin-top: 5px;
+                font-size: 16px;
+                opacity: 0.9;
+            }
+            .container { 
+                background-color: #ffffff; 
+                border-radius: 12px; 
+                box-shadow: 0 4px 12px rgba(0, 0, 0, 0.08); 
+                padding: 25px; 
+                max-width: 90%;
+                margin: -20px auto 20px;
+                position: relative;
+            }
+            h2 { 
+                color: #333; 
+                margin-top: 0; 
+                font-size: 20px; 
+                margin-bottom: 10px;
+            }
+            .status-text { 
+                color: #007bff; 
+                font-weight: 500; 
+                margin-bottom: 30px; 
+                font-size: 15px;
+            }
+            button { 
+                width: 100%; 
+                padding: 18px; 
+                margin-top: 25px; 
+                border: none; 
+                border-radius: 10px; 
+                font-size: 18px; 
+                font-weight: bold; 
+                cursor: pointer; 
+                transition: background-color 0.3s; 
+                box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+            }
+            .confirm-btn { 
+                background-color: #28a745; 
+                color: white; 
+            }
+            .confirm-btn:hover { 
+                background-color: #1e7e34; 
+            }
+            .map-link-group { 
+                margin-top: 20px; 
+                padding: 15px; 
+                background-color: #e9ecef; 
+                border-radius: 8px; 
+            }
+            .map-link-group p { 
+                color: #555; 
+                margin-top: 0; 
+                font-size: 14px; 
+                font-weight: 500;
+            }
+            .map-btn { 
+                display: block; 
+                padding: 12px; 
+                margin-top: 10px; 
+                border-radius: 6px; 
+                text-decoration: none; 
+                font-weight: bold; 
+                font-size: 16px;
+                box-shadow: 0 2px 4px rgba(0, 0, 0, 0.05);
+            }
+            .amap-btn { 
+                background-color: #17b3a3; 
+                color: white; 
+            }
+            .apple-btn { 
+                background-color: #555; 
+                color: white; 
+            }
+            .info-text { 
+                color: #dc3545; 
+                font-weight: bold; 
+                margin-top: 20px; 
+            }
+            .loading { 
+                border: 3px solid #f3f3f3; 
+                border-top: 3px solid #28a745; 
+                border-radius: 50%; 
+                width: 18px; 
+                height: 18px; 
+                animation: spin 1s linear infinite; 
+                display: none; 
+                margin: 10px auto;
+            }
+            @keyframes spin { 
+                0% { transform: rotate(0deg); } 
+                100% { transform: rotate(360deg); } 
+            }
         </style>
     </head>
     <body>
+        <div class="header">
+            <h1>🚨 紧急挪车请求</h1>
+            <p>请您尽快处理，避免不必要的麻烦</p>
+        </div>
         <div class="container">
-            <h1>紧急挪车请求</h1>
-            <h2>请您尽快处理</h2>
-            <p class="status-text">请求人正在等待您的确认和行动。</p>
+            <h2>请求人正在等待</h2>
+            <p class="status-text">请点击确认按钮并前往挪车。</p>
 
             ${mapHtml}
 
@@ -370,9 +593,9 @@ async function renderOwnerPage(MOVE_CAR_STATUS) {
 
                     if (response.ok) {
                         document.querySelector('.container').innerHTML = 
-                            '<h1>✅ 挪车请求已确认</h1>' +
-                            '<p class="status-text" style="color:#28a745;">您已成功确认挪车，请求人将收到通知。请尽快前往！</p>' +
-                            '<p style="font-size: 14px; margin-top: 30px;">（此页面已失效，无需重复操作）</p>';
+                            '<h1 style="color:#28a745; font-size: 28px;">✅ 挪车请求已确认</h1>' +
+                            '<p style="color:#28a745; font-weight: 500; font-size: 16px; margin-top: 15px;">您已成功确认。请求人将收到通知，请尽快前往！</p>' +
+                            '<p style="font-size: 14px; color:#999; margin-top: 30px;">（此页面已失效，无需重复操作）</p>';
                     } else {
                         alert('❌ 确认失败，请重试。');
                         confirmButton.disabled = false;
@@ -401,25 +624,24 @@ async function renderOwnerPage(MOVE_CAR_STATUS) {
 
 /**
  * 核心请求处理函数 (原 Worker 的逻辑)
- * @param {Request} request 
- * @param {Object} env - 包含绑定和环境变量
- * @returns {Response}
  */
 async function handleRequest(request, env) {
+    
+    // 1. 地域限制逻辑 (只允许中国地区访问)
+    const country = request.cf?.country;
+    if (country && country !== 'CN') {
+        return new Response('Access Denied', { status: 403 });
+    }
+    
+    // 2. 绑定和环境变量
     const MOVE_CAR_STATUS = env.MOVE_CAR_STATUS;
     const BARK_URL = env.BARK_URL;
     const PHONE_NUMBER = env.PHONE_NUMBER;
 
     const url = new URL(request.url);
     const path = url.pathname;
-
-    // 地域限制逻辑 (可选，默认注释掉以方便测试)
-    // const country = request.cf?.country;
-    // if (country && country !== 'CN') {
-    //     return new Response('Access Denied', { status: 403 });
-    // }
     
-    // 核心路由分发
+    // 3. 核心路由分发
     if (path === '/api/notify' && request.method === 'POST') {
         return handleNotify(request, url, MOVE_CAR_STATUS, BARK_URL);
     }
@@ -452,8 +674,7 @@ async function handleRequest(request, env) {
 }
 
 
-// Pages Functions 要求的导出函数，它调用了我们适配后的 handleRequest
+// Pages Functions 要求的导出函数
 export async function onRequest(context) {
-    // context 包含了 request, env, 和 function path
     return handleRequest(context.request, context.env);
 }
